@@ -1,11 +1,80 @@
-import { useState } from 'react';
+import { useState, useContext, useEffect } from 'react';
 import { 
   User, Settings, Shield, CreditCard, Bell, 
   Key, Smartphone, Mail, AlertTriangle, Monitor,
   CheckCircle2
 } from 'lucide-react';
+import { AuthContext } from '../context/AuthContext';
+import axiosInstance from '../lib/axiosInstance';
+import toast from 'react-hot-toast';
 
 export default function Profile() {
+  const { user, login } = useContext(AuthContext); // Can use login/set user if exposed, or just rely on backend fetch
+  const [profile, setProfile] = useState(user || {});
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Forms state
+  const [firstName, setFirstName] = useState(user?.firstName || '');
+  const [lastName, setLastName] = useState(user?.lastName || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const { data } = await axiosInstance.get('/user/profile');
+        setProfile(data);
+        setFirstName(data.firstName);
+        setLastName(data.lastName);
+        setEmail(data.email);
+        setTwoFactorEnabled(data.two_factor_enabled || false);
+      } catch (error) {
+        console.error('Failed to load profile', error);
+      }
+    };
+    fetchProfile();
+  }, []);
+
+  const handleUpdateProfile = async () => {
+    setIsSaving(true);
+    try {
+      const { data } = await axiosInstance.patch('/user/profile', { firstName, lastName, email });
+      setProfile(data);
+      toast.success('Profile updated successfully');
+      // If we need to update context, we'd do it here
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to update profile');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleToggle2FA = async () => {
+    const newValue = !twoFactorEnabled;
+    setTwoFactorEnabled(newValue);
+    try {
+      await axiosInstance.patch('/user/notifications', { two_factor_enabled: newValue });
+      toast.success(newValue ? 'Two-Factor Enabled' : 'Two-Factor Disabled');
+    } catch (error) {
+       setTwoFactorEnabled(!newValue); // revert on error
+       toast.error('Failed to update 2FA setting');
+    }
+  };
+
+  const handleChangePassword = async () => {
+    const currentPassword = prompt("Enter current password:");
+    if (!currentPassword) return;
+    const newPassword = prompt("Enter new password:");
+    if (!newPassword) return;
+
+    try {
+      await axiosInstance.post('/user/password/change', { currentPassword, newPassword });
+      toast.success('Password changed successfully');
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to change password');
+    }
+  };
+
   // Simple state for visual toggles
   const [emailNotifs, setEmailNotifs] = useState(true);
   const [marketingNotifs, setMarketingNotifs] = useState(false);
@@ -23,18 +92,18 @@ export default function Profile() {
         {/* Profile Header */}
         <div className="bg-sb-surface rounded-2xl p-8 border border-sb-border flex flex-col sm:flex-row items-start sm:items-center gap-6">
           <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-sb-primary shrink-0 relative group cursor-pointer">
-            <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200&h=200" alt="Profile" className="w-full h-full object-cover" />
+            <img src={profile.profileImage || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200&h=200"} alt="Profile" className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
               <span className="text-xs font-bold text-white">Change</span>
             </div>
           </div>
           <div className="flex-1">
-            <h2 className="text-2xl font-bold mb-1">Alex Chen</h2>
+            <h2 className="text-2xl font-bold mb-1">{profile.firstName} {profile.lastName}</h2>
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs text-sb-primary tracking-widest uppercase font-bold">Pro Plan</span>
+              <span className="text-xs text-sb-primary tracking-widest uppercase font-bold">{profile.subscription_plan} Plan</span>
               <CheckCircle2 className="w-3 h-3 text-sb-primary" />
             </div>
-            <div className="text-sm text-sb-text-muted">alex.chen@example.com</div>
+            <div className="text-sm text-sb-text-muted">{profile.email}</div>
           </div>
           <button className="w-full sm:w-auto px-6 py-2.5 bg-white text-black rounded-lg text-sm font-bold hover:bg-gray-200 transition-colors mt-4 sm:mt-0">
             View Public Profile
@@ -49,19 +118,23 @@ export default function Profile() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-xs uppercase tracking-widest text-sb-text-muted font-bold mb-2">First Name</label>
-              <input type="text" defaultValue="Alex" className="w-full bg-[#0A0A0A] border border-sb-border rounded-lg py-3 px-4 text-sm focus:outline-none focus:border-sb-primary text-white" />
+              <input value={firstName} onChange={e=>setFirstName(e.target.value)} type="text" className="w-full bg-[#0A0A0A] border border-sb-border rounded-lg py-3 px-4 text-sm focus:outline-none focus:border-sb-primary text-white" />
             </div>
             <div>
               <label className="block text-xs uppercase tracking-widest text-sb-text-muted font-bold mb-2">Last Name</label>
-              <input type="text" defaultValue="Chen" className="w-full bg-[#0A0A0A] border border-sb-border rounded-lg py-3 px-4 text-sm focus:outline-none focus:border-sb-primary text-white" />
+              <input value={lastName} onChange={e=>setLastName(e.target.value)} type="text" className="w-full bg-[#0A0A0A] border border-sb-border rounded-lg py-3 px-4 text-sm focus:outline-none focus:border-sb-primary text-white" />
             </div>
             <div className="md:col-span-2">
               <label className="block text-xs uppercase tracking-widest text-sb-text-muted font-bold mb-2">Email Address</label>
-              <input type="email" defaultValue="alex.chen@example.com" className="w-full bg-[#0A0A0A] border border-sb-border rounded-lg py-3 px-4 text-sm focus:outline-none focus:border-sb-primary text-white" />
+              <input value={email} onChange={e=>setEmail(e.target.value)} type="email" className="w-full bg-[#0A0A0A] border border-sb-border rounded-lg py-3 px-4 text-sm focus:outline-none focus:border-sb-primary text-white" />
             </div>
             <div className="md:col-span-2 flex justify-end mt-2">
-              <button className="px-6 py-2.5 bg-sb-primary/10 text-sb-primary border border-sb-primary/20 hover:bg-sb-primary/20 rounded-lg text-sm font-bold transition-colors">
-                Save Changes
+              <button 
+                 onClick={handleUpdateProfile}
+                 disabled={isSaving}
+                 className="px-6 py-2.5 bg-sb-primary/10 text-sb-primary border border-sb-primary/20 hover:bg-sb-primary/20 rounded-lg text-sm font-bold transition-colors disabled:opacity-50"
+              >
+                {isSaving ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           </div>
@@ -75,17 +148,17 @@ export default function Profile() {
               <Shield className="w-5 h-5 text-sb-purple" /> Security
             </div>
             <div className="space-y-2">
-              <button className="w-full text-left p-4 rounded-xl border border-transparent hover:border-sb-border hover:bg-[#0A0A0A] transition-all flex items-center justify-between group">
+              <button onClick={handleChangePassword} className="w-full text-left p-4 rounded-xl border border-transparent hover:border-sb-border hover:bg-[#0A0A0A] transition-all flex items-center justify-between group">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-sb-bg rounded-lg group-hover:bg-sb-surface"><Key className="w-4 h-4 text-sb-text-muted" /></div>
                   <div>
                     <div className="text-sm font-bold text-white">Change Password</div>
-                    <div className="text-xs text-sb-text-muted mt-0.5">Last updated 3 months ago</div>
+                    <div className="text-xs text-sb-text-muted mt-0.5">Keep your account secure</div>
                   </div>
                 </div>
               </button>
               
-              <button className="w-full text-left p-4 rounded-xl border border-transparent hover:border-sb-border hover:bg-[#0A0A0A] transition-all flex items-center justify-between group">
+              <button onClick={handleToggle2FA} className="w-full text-left p-4 rounded-xl border border-transparent hover:border-sb-border hover:bg-[#0A0A0A] transition-all flex items-center justify-between group">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-sb-bg rounded-lg group-hover:bg-sb-surface"><Smartphone className="w-4 h-4 text-sb-text-muted" /></div>
                   <div>
@@ -93,7 +166,11 @@ export default function Profile() {
                     <div className="text-xs text-sb-text-muted mt-0.5">Add an extra layer of security</div>
                   </div>
                 </div>
-                <span className="text-xs font-bold text-green-400 bg-green-400/10 px-2 py-1 rounded">Enabled</span>
+                {twoFactorEnabled ? (
+                   <span className="text-xs font-bold text-green-400 bg-green-400/10 px-2 py-1 rounded">Enabled</span>
+                ) : (
+                   <span className="text-xs font-bold text-sb-text-muted bg-sb-border/50 px-2 py-1 rounded">Disabled</span>
+                )}
               </button>
 
               <button className="w-full text-left p-4 rounded-xl border border-transparent hover:border-sb-border hover:bg-[#0A0A0A] transition-all flex items-center justify-between group">
@@ -104,7 +181,7 @@ export default function Profile() {
                     <div className="text-xs text-sb-text-muted mt-0.5">Manage your logged in devices</div>
                   </div>
                 </div>
-                <span className="text-xs text-sb-text-muted">2 Devices</span>
+                <span className="text-xs text-sb-text-muted">Review</span>
               </button>
             </div>
           </div>

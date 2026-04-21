@@ -1,12 +1,88 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Upload as UploadIcon, Info, FolderUp, Check, Shield, Globe, Lock } from 'lucide-react';
 import { cn } from '../lib/utils';
+import axiosInstance from '../lib/axiosInstance';
+import toast from 'react-hot-toast';
 
 export default function Upload() {
+  const [file, setFile] = useState(null);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
   const [watermark, setWatermark] = useState(false);
   const [geoblock, setGeoblock] = useState(true);
   const [isPrivate, setIsPrivate] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const fileInputRef = useRef(null);
+
+  const handleFileSelect = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setFile(e.target.files[0]);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      setFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const determineFileType = (filename) => {
+    const ext = filename.split('.').pop().toLowerCase();
+    if (['mp4', 'mov', 'mkv'].includes(ext)) return 'video';
+    if (['png', 'jpg', 'jpeg'].includes(ext)) return 'image';
+    if (['pdf'].includes(ext)) return 'document';
+    return 'upload'; // generic
+  };
+
+  const handleStartUpload = async () => {
+    if (!file) return toast.error('Please select a file to upload');
+    if (!title) return toast.error('Please provide a title');
+
+    setIsUploading(true);
+    const loadingToast = toast.loading('Uploading to Cloudinary...');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      // 1. Upload to Cloudinary via Backend
+      const uploadRes = await axiosInstance.post('/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      const { url, size } = uploadRes.data;
+
+      toast.loading('Saving metadata...', { id: loadingToast });
+
+      // 2. Save Metadata
+      await axiosInstance.post('/upload/metadata', {
+        title,
+        description,
+        type: determineFileType(file.name),
+        fileUrl: url,
+        visibility: isPrivate ? 'private' : 'public',
+        is_watermarked: watermark,
+        geo_blocked_countries: geoblock ? ['RU', 'CN'] : [], // Mocking restricted countries
+        fileSize: size || file.size
+      });
+
+      toast.success('Upload complete!', { id: loadingToast });
+      
+      // Reset form
+      setFile(null);
+      setTitle('');
+      setDescription('');
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Upload failed', { id: loadingToast });
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   return (
     <div className="flex-1 p-8 overflow-y-auto">
@@ -29,7 +105,7 @@ export default function Upload() {
           )}
           onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
           onDragLeave={() => setIsDragging(false)}
-          onDrop={(e) => { e.preventDefault(); setIsDragging(false); }}
+          onDrop={handleDrop}
         >
           {/* Abstract bg lines */}
           <div className="absolute inset-0 opacity-10 pointer-events-none overflow-hidden rounded-2xl">
@@ -41,11 +117,33 @@ export default function Upload() {
             <div className="w-20 h-20 rounded-full bg-sb-surface flex items-center justify-center border border-sb-border mb-6">
               <UploadIcon className="w-8 h-8 text-sb-text" />
             </div>
-            <h2 className="text-2xl font-bold mb-3">Drag & Drop Your File</h2>
-            <p className="text-sm text-sb-text-muted max-w-md mb-8">
-              Select a file from your computer or drop it here to begin uploading.
-            </p>
-            <button className="bg-sb-surface border border-sb-border hover:border-sb-text transition-colors px-6 py-3 rounded-full text-sm font-bold flex items-center gap-2">
+            {file ? (
+              <>
+                 <h2 className="text-2xl font-bold mb-3 text-sb-primary">{file.name}</h2>
+                 <p className="text-sm text-sb-text-muted max-w-md mb-8">
+                   {(file.size / 1024 / 1024).toFixed(2)} MB ready for upload.
+                 </p>
+              </>
+            ) : (
+              <>
+                <h2 className="text-2xl font-bold mb-3">Drag & Drop Your File</h2>
+                <p className="text-sm text-sb-text-muted max-w-md mb-8">
+                  Select a file from your computer or drop it here to begin uploading.
+                </p>
+              </>
+            )}
+            
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleFileSelect} 
+              className="hidden" 
+              accept=".mp4,.png,.jpg,.jpeg,.pdf,.mov,.mkv"
+            />
+            <button 
+              onClick={() => fileInputRef.current.click()}
+              className="bg-sb-surface border border-sb-border hover:border-sb-text transition-colors px-6 py-3 rounded-full text-sm font-bold flex items-center gap-2"
+            >
               <FolderUp className="w-4 h-4" /> BROWSE FILES
             </button>
           </div>
@@ -74,6 +172,8 @@ export default function Upload() {
                 <label className="block text-xs font-medium text-sb-text-muted mb-2">Title</label>
                 <input 
                   type="text" 
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
                   placeholder="e.g., My Awesome Video"
                   className="w-full bg-[#111113] border border-transparent rounded-lg py-3 px-4 text-sm focus:outline-none focus:border-sb-border transition-colors text-sb-text placeholder:text-sb-text-muted"
                 />
@@ -81,6 +181,8 @@ export default function Upload() {
               <div>
                 <label className="block text-xs font-medium text-sb-text-muted mb-2">Description</label>
                 <textarea 
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
                   placeholder="Enter file details..."
                   rows={4}
                   className="w-full bg-[#111113] border border-transparent rounded-lg py-3 px-4 text-sm focus:outline-none focus:border-sb-border transition-colors text-sb-text placeholder:text-sb-text-muted resize-none"
@@ -123,7 +225,7 @@ export default function Upload() {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-sm font-bold mb-1">Watermarking</div>
-                  <div className="text-[10px] text-sb-text-muted">Add invisible watermarks to track your content.</div>
+                  <div className="text-[10px] text-sb-text-muted">Add invisible watermarks.</div>
                 </div>
                 <button 
                   onClick={() => setWatermark(!watermark)}
@@ -138,7 +240,7 @@ export default function Upload() {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-sm font-bold mb-1">Geo-blocking</div>
-                  <div className="text-[10px] text-sb-text-muted">Restrict access to specific countries.</div>
+                  <div className="text-[10px] text-sb-text-muted">Restrict access countries.</div>
                 </div>
                 <button 
                   onClick={() => setGeoblock(!geoblock)}
@@ -153,9 +255,19 @@ export default function Upload() {
           </div>
 
           <div className="mt-4">
-            <button className="w-full bg-gradient-to-r from-sb-primary to-[#00f2fe] text-black font-bold py-4 rounded-full flex items-center justify-center gap-2 hover:opacity-90 transition-opacity shadow-[0_0_20px_rgba(0,229,255,0.2)] hover:scale-[1.02] transform duration-200">
-              <svg className="w-5 h-5 fill-black" viewBox="0 0 24 24"><path d="M12 2L2 22l10-3 10 3L12 2z"/></svg>
-              Start Upload
+            <button 
+              onClick={handleStartUpload}
+              disabled={isUploading}
+              className="w-full bg-gradient-to-r from-sb-primary to-[#00f2fe] text-black font-bold py-4 rounded-full flex items-center justify-center gap-2 hover:opacity-90 transition-opacity shadow-[0_0_20px_rgba(0,229,255,0.2)] hover:scale-[1.02] transform duration-200 disabled:opacity-50"
+            >
+              {isUploading ? (
+                <span>Uploading...</span>
+              ) : (
+                <>
+                  <svg className="w-5 h-5 fill-black" viewBox="0 0 24 24"><path d="M12 2L2 22l10-3 10 3L12 2z"/></svg>
+                  Start Upload
+                </>
+              )}
             </button>
             <div className="text-center mt-4 text-[10px] text-sb-text-muted font-bold tracking-widest uppercase">
               End-to-End Encryption Active

@@ -1,28 +1,107 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Upload as UploadIcon, CheckCircle2, ScanFace, FileText, Activity } from 'lucide-react';
 import { cn } from '../lib/utils';
+import axiosInstance from '../lib/axiosInstance';
+import toast from 'react-hot-toast';
 
 export default function ClaimCopyright() {
-  const [progress, setProgress] = useState(65);
-  const [isScanning, setIsScanning] = useState(true);
+  const [claim, setClaim] = useState(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
-  // Simulate progress
-  useEffect(() => {
-    if (isScanning) {
-      const interval = setInterval(() => {
-        setProgress(p => {
-          if (p >= 100) {
-            clearInterval(interval);
-            setIsScanning(false);
-            return 100;
-          }
-          return p + 1;
-        });
-      }, 100);
-      return () => clearInterval(interval);
+  const handleFileSelect = async (e) => {
+    if (e.target.files && e.target.files[0]) {
+      startClaimProcess(e.target.files[0]);
     }
-  }, [isScanning]);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      startClaimProcess(e.dataTransfer.files[0]);
+    }
+  };
+
+  const startClaimProcess = async (file) => {
+    setIsUploading(true);
+    const loadingToast = toast.loading('Uploading file to cloud for scanning...');
+    
+    try {
+      // 1. Upload File
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const uploadRes = await axiosInstance.post('/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      const { url } = uploadRes.data;
+
+      toast.loading('Submitting claim...', { id: loadingToast });
+
+      // 2. Submit Claim
+      const claimRes = await axiosInstance.post('/copyright/claim', {
+        fileName: file.name,
+        fileUrl: url
+      });
+      const _claim = claimRes.data;
+      setClaim(_claim);
+
+      // 3. Initiate Scan
+      await axiosInstance.post('/copyright/scan', { claimId: _claim._id });
+
+      toast.success('Scan initiated successfully', { id: loadingToast });
+      setIsScanning(true);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to start claim process', { id: loadingToast });
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  // Poll backend for claim status
+  useEffect(() => {
+    let interval;
+    if (isScanning && claim && claim._id) {
+      interval = setInterval(async () => {
+        try {
+          const { data } = await axiosInstance.get(`/copyright/claim/${claim._id}`);
+          setClaim(data);
+          
+          if (data.status === 'Completed' || data.status === 'Failed') {
+            setIsScanning(false);
+            clearInterval(interval);
+            if (data.status === 'Completed') toast.success('Scan Complete!');
+            if (data.status === 'Failed') toast.error('Scan Failed!');
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      }, 2000);
+    }
+    return () => clearInterval(interval);
+  }, [isScanning, claim?._id]);
+
+  const viewLogs = async () => {
+    if (!claim) return;
+    try {
+      const { data } = await axiosInstance.get(`/copyright/claim/${claim._id}/logs`);
+      toast((t) => (
+        <div>
+           <b>Latest Log:</b><br/>{data[data.length-1]?.message}
+        </div>
+      ), { duration: 4000 });
+    } catch(e) {}
+  };
+
+  const progress = claim?.progress || 0;
+  const status = claim?.status || 'Waiting';
+
+  const isUploaded = ['Uploaded', 'AI_Analysis', 'Finalizing_Report', 'Completed', 'Failed'].includes(status);
+  const isAIAnalysis = ['AI_Analysis', 'Finalizing_Report', 'Completed'].includes(status);
+  const isFinalizing = ['Finalizing_Report', 'Completed'].includes(status);
 
   return (
     <div className="flex-1 p-8 overflow-y-auto">
@@ -41,13 +120,23 @@ export default function ClaimCopyright() {
 
       <div className="flex flex-col lg:flex-row gap-8">
         {/* Upload Box */}
-        <div className="flex-1 bg-sb-surface/50 border border-dashed border-sb-border rounded-2xl p-12 flex flex-col items-center justify-center min-h-[400px] hover:border-sb-border/80 transition-colors">
+        <div 
+          className={cn(
+             "flex-1 bg-sb-surface/50 border border-dashed border-sb-border rounded-2xl p-12 flex flex-col items-center justify-center min-h-[400px] hover:border-sb-border/80 transition-colors cursor-pointer",
+             isUploading && "opacity-50 pointer-events-none"
+          )}
+          onClick={() => !isScanning && !isUploading && fileInputRef.current?.click()}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={handleDrop}
+        >
           <div className="w-16 h-16 rounded-full bg-sb-surface flex items-center justify-center border border-sb-border mb-6">
             <UploadIcon className="w-6 h-6 text-sb-primary" />
           </div>
-          <h2 className="text-xl font-bold mb-2">Drop video file here</h2>
+          <h2 className="text-xl font-bold mb-2">
+             {isUploading ? 'Uploading...' : (isScanning ? 'Scan in progress...' : 'Drop video file here')}
+          </h2>
           <p className="text-[10px] tracking-widest text-sb-text-muted font-bold uppercase mb-8">
-            OR CLICK TO BROWSE LOCAL STORAGE
+            {isUploading || isScanning ? 'PLEASE WAIT' : 'OR CLICK TO BROWSE LOCAL STORAGE'}
           </p>
           <div className="flex gap-2">
             {['MP4', 'MOV', 'MKV'].map(ext => (
@@ -56,15 +145,22 @@ export default function ClaimCopyright() {
               </span>
             ))}
           </div>
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleFileSelect} 
+            className="hidden" 
+            accept=".mp4,.mov,.mkv"
+          />
         </div>
 
         {/* Progress Box */}
         <div className="w-full lg:w-[450px] bg-sb-surface border border-sb-border rounded-2xl p-8">
           <div className="flex items-center justify-between mb-8">
-            <div className="text-[10px] font-bold text-sb-primary tracking-widest uppercase">
+             <div className="text-[10px] font-bold text-sb-primary tracking-widest uppercase">
               SCANNING PROGRESS
             </div>
-            <Activity className="w-4 h-4 text-sb-primary animate-pulse" />
+            {isScanning && <Activity className="w-4 h-4 text-sb-primary animate-pulse" />}
           </div>
 
           <div className="space-y-8 relative">
@@ -72,22 +168,27 @@ export default function ClaimCopyright() {
             <div className="absolute left-4 top-4 bottom-8 w-px bg-sb-border" />
 
             {/* Step 1 */}
-            <div className="flex gap-4 relative z-10">
-              <div className="w-8 h-8 rounded-full bg-sb-bg border border-sb-border flex items-center justify-center shrink-0">
-                <CheckCircle2 className="w-4 h-4 text-sb-text" />
+            <div className={cn("flex gap-4 relative z-10 transition-opacity", !isUploaded && !isUploading ? 'opacity-30' : '')}>
+              <div className={cn("w-8 h-8 rounded-full border flex items-center justify-center shrink-0", isUploaded ? "bg-sb-bg border-sb-border" : "border-sb-border")}>
+                {isUploaded && <CheckCircle2 className="w-4 h-4 text-sb-text" />}
+                 {!isUploaded && <div className="w-2 h-2 rounded-full bg-sb-text-muted" />}
               </div>
               <div>
                 <div className="font-bold text-sm mb-1 text-white">File Uploaded</div>
                 <div className="text-[10px] text-sb-text-muted uppercase tracking-widest">
-                  INGESTED SUCCESSFULLY. HASH: 8F6A2C...
+                  {isUploaded ? `INGESTED: ${claim?.fileName}` : 'WAITING FOR FILE'}
                 </div>
               </div>
             </div>
 
             {/* Step 2 (Active) */}
-            <div className="flex gap-4 relative z-10">
-              <div className="w-8 h-8 rounded-full bg-sb-bg border border-sb-purple flex items-center justify-center shrink-0 shadow-[0_0_10px_rgba(157,78,221,0.3)]">
-                <ScanFace className="w-4 h-4 text-sb-purple" />
+            <div className={cn("flex gap-4 relative z-10", !isAIAnalysis ? 'opacity-30' : '')}>
+              <div className={cn("w-8 h-8 rounded-full border flex items-center justify-center shrink-0", 
+                 isAIAnalysis && !isFinalizing ? "bg-sb-bg border-sb-purple shadow-[0_0_10px_rgba(157,78,221,0.3)]" : "bg-sb-bg border-sb-border"
+              )}>
+                 {isAIAnalysis && !isFinalizing ? <ScanFace className="w-4 h-4 text-sb-purple" /> : (
+                    isFinalizing ? <CheckCircle2 className="w-4 h-4 text-sb-text" /> : <div className="w-2 h-2 rounded-full bg-sb-text-muted" />
+                 )}
               </div>
               <div className="flex-1">
                 <div className="font-bold text-sm mb-1 text-white">AI Infringement Analysis</div>
@@ -97,12 +198,12 @@ export default function ClaimCopyright() {
                     className="h-full bg-gradient-to-r from-sb-primary to-sb-purple rounded-full"
                     initial={{ width: 0 }}
                     animate={{ width: `${progress}%` }}
-                    transition={{ duration: 0.1 }}
+                    transition={{ duration: 0.3 }}
                   />
                 </div>
                 <div className="flex justify-between items-center">
-                  <div className="text-[10px] text-sb-purple font-bold uppercase tracking-widest">
-                    DEEP SCANNING NETWORKS...
+                  <div className="text-[10px] text-sb-purple font-bold uppercase tracking-widest w-40 truncate">
+                    {claim && claim.logs.length > 0 ? claim.logs[claim.logs.length-1].message : 'WAITING...'}
                   </div>
                   <div className="text-[10px] text-sb-text-muted font-bold">
                     {Math.floor(progress)}%
@@ -112,22 +213,32 @@ export default function ClaimCopyright() {
             </div>
 
             {/* Step 3 */}
-            <div className="flex gap-4 relative z-10 opacity-50">
+            <div className={cn("flex gap-4 relative z-10", !isFinalizing ? "opacity-30" : "")}>
               <div className="w-8 h-8 rounded-full bg-sb-bg border border-sb-border flex items-center justify-center shrink-0">
-                <div className="w-2 h-2 rounded-full bg-sb-text-muted" />
+                 {status === 'Completed' ? <CheckCircle2 className="w-4 h-4 text-sb-text" /> : <div className="w-2 h-2 rounded-full bg-sb-text-muted" />}
               </div>
               <div>
                 <div className="font-bold text-sm mb-1 text-white">Finalizing Report</div>
                 <div className="text-[10px] text-sb-text-muted uppercase tracking-widest">
-                  AWAITING ANALYSIS COMPLETION
+                  {status === 'Completed' ? 'REPORT GENERATED' : 'AWAITING ANALYSIS COMPLETION'}
                 </div>
               </div>
             </div>
           </div>
 
-          <button className="w-full mt-10 bg-[#111113] hover:bg-sb-surface-hover border border-sb-border transition-colors py-3.5 rounded-lg flex items-center justify-center gap-2 text-xs font-bold text-sb-purple uppercase tracking-wider">
+          <button 
+             onClick={viewLogs}
+             disabled={!claim}
+             className="w-full mt-10 bg-[#111113] hover:bg-sb-surface-hover border border-sb-border transition-colors py-3.5 rounded-lg flex items-center justify-center gap-2 text-xs font-bold text-sb-purple uppercase tracking-wider disabled:opacity-50"
+          >
             <FileText className="w-4 h-4" /> View Live Logs
           </button>
+          
+          {status === 'Completed' && claim?.reportUrl && (
+             <a href={claim.reportUrl} target="_blank" className="w-full mt-2 bg-sb-primary/10 hover:bg-sb-primary/20 text-sb-primary border border-sb-primary/50 transition-colors py-3.5 rounded-lg flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-wider block text-center">
+                Download Report
+             </a>
+          )}
         </div>
       </div>
     </div>
