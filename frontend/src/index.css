@@ -1,1 +1,55 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 @import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', sans-serif;
+  
+  --color-sb-bg: #0f0f11;
+  --color-sb-surface: #17171a;
+  --color-sb-surface-hover: #1e1e24;
+  --color-sb-border: #26262a;
+  
+  --color-sb-primary: #00e5ff;
+  --color-sb-primary-hover: #00cce6;
+  --color-sb-purple: #9d4edd;
+  
+  --color-sb-text: #f8f9fa;
+  --color-sb-text-muted: #9ca3af;
+}
+
+body {
+  background-color: var(--color-sb-bg);
+  color: var(--color-sb-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-sb-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-sb-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-sb-surface-hover);
+}
+
+/* Utility classes for text gradients */
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r;
+  }
+  .gradient-primary {
+    @apply from-[#00e5ff] to-[#9d4edd];
+  }
+}
