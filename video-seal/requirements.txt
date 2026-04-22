@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+httpx
+cloudinary
+ffmpeg-python
+torch
+opencv-python
+numpy
