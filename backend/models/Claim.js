@@ -28,10 +28,18 @@ const claimSchema = new mongoose.Schema({
     message: String,
     level: { type: String, enum: ['info', 'warning', 'error'], default: 'info' }
   }],
+  // Add this to your Claim Schema
+matches: [{
+  title: String,
+  url: String,
+  similarity: Number,
+  owner_id: String
+}],
   reportUrl: {
     type: String,
     default: null, // Link to final report
   }
+  
 }, { timestamps: true });
 
 const Claim = mongoose.model('Claim', claimSchema);
