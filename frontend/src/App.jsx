@@ -2,7 +2,9 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, AuthContext } from './context/AuthContext';
-import { useContext } from 'react';
+import { useContext, useEffect } from 'react';
+import useUiProtection from './hooks/useUiProtection'; // Import the new hook
+
 import Layout from './components/Layout';
 import Landing from './pages/Landing';
 import Auth from './pages/Auth';
@@ -21,9 +23,20 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
-
 function App() {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
+  // 1. Initialize the general UI protections (Right click, shortcuts, etc.)
+  useUiProtection();
+
+  // 2. The Debugger Trap (Hostile DevTools Blocker)
+  useEffect(() => {
+    const antiDevTools = setInterval(() => {
+      Function("debugger")(); 
+    }, 50);
+
+    return () => clearInterval(antiDevTools);
+  }, []);
 
   return (
     <GoogleOAuthProvider clientId={clientId}>

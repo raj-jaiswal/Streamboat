@@ -7,7 +7,7 @@ import streamboatIcon from '../assets/streamboat.svg';
 import axiosInstance from '../lib/axiosInstance';
 import toast from 'react-hot-toast';
 
-const TABS = ['All Media', 'Video', 'Image', 'Document', 'Upload'];
+const TABS = ['All Media', 'Video', 'Image', 'Document'];
 
 export default function MyMedia() {
   const navigate = useNavigate();
