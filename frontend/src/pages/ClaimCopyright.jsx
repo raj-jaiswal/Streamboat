@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload as UploadIcon, CheckCircle2, ScanFace, FileText, Activity, Image as ImageIcon } from 'lucide-react';
+import { Upload as UploadIcon, CheckCircle2, ScanFace, FileText, Activity, Image as ImageIcon, ShieldAlert } from 'lucide-react';
 import { cn } from '../lib/utils';
 import axiosInstance from '../lib/axiosInstance';
 import toast from 'react-hot-toast';
@@ -9,6 +9,7 @@ export default function ClaimCopyright() {
   const [claim, setClaim] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [reportedMatches, setReportedMatches] = useState(new Set()); // Track reported items
   const fileInputRef = useRef(null);
 
   const handleFileSelect = async (e) => {
@@ -92,18 +93,36 @@ export default function ClaimCopyright() {
     } catch(e) {}
   };
 
-  // ─── Adapted Thumbnail Logic from Library.jsx ─────────────────────────────────
+  // ─── Handle Report Button Click ──────────────────────────────────────────────
+  const handleReportMatch = async (match, index) => {
+    if (!claim || !claim._id) return;
+    const toastId = toast.loading('Submitting report...');
+    
+    try {
+      await axiosInstance.post(`/copyright/claim/${claim._id}/report`, {
+        title: match.title,
+        similarity: match.similarity,
+        owner_id: match.owner_id
+      });
+      
+      // Update UI state so they can't report the same item twice
+      setReportedMatches(prev => new Set(prev).add(index));
+      toast.success('Asset reported for review', { id: toastId });
+    } catch (error) {
+      toast.error('Failed to submit report', { id: toastId });
+    }
+  };
+
   const getThumbnailUrl = (url, type) => {
     if (!url) return '';
     const urlParts = url.split('/upload/');
     
     if (urlParts.length === 2) {
-      // For the list view, we use w_150, h_150 to keep it lightweight
       if (type === 'document' || type === 'pdf' || type === 'raw') {
         return url.replace('/upload/', '/upload/w_150,h_150,c_fill,pg_1,f_jpg/').replace(/\.[^/.]+$/, '.jpg');
       } else if (type === 'video') {
         return url.replace('/upload/', '/upload/w_150,h_150,c_fill,f_jpg/').replace(/\.[^/.]+$/, '.jpg');
-      } else { // default to image treatment
+      } else {
         return url.replace('/upload/', '/upload/w_150,h_150,c_fill/');
       }
     }
@@ -128,7 +147,7 @@ export default function ClaimCopyright() {
           <span className="text-sb-text-muted">Secure your assets.</span>
         </h1>
         <p className="text-sm text-sb-text-muted max-w-xl leading-relaxed">
-          Upload your source file. Our Sentinel AI will autonomously analyze structural metadata, visual fingerprints, and audio signatures to identify and neutralize unauthorized distribution across global networks. No manual claims required.
+          Upload your source file. Our Sentinel AI will autonomously analyze structural metadata, visual fingerprints, and audio signatures to identify and neutralize unauthorized distribution across global networks.
         </p>
       </div>
 
@@ -190,43 +209,67 @@ export default function ClaimCopyright() {
                     <p className="text-sm text-red-400 font-medium mb-4 pb-4 border-b border-white/10">
                       Warning: Potential infringements detected with high visual/structural similarity across the network.
                     </p>
-                    {claim.matches.map((match, idx) => (
-                      <div key={idx} className="flex items-center gap-4 p-4 bg-black/30 rounded-xl border border-white/5 hover:border-sb-purple/30 transition-colors">
-                        
-                        {/* 🚨 THE NEW THUMBNAIL BLOCK 🚨 */}
-                        <div className="w-16 h-16 shrink-0 rounded-lg overflow-hidden bg-sb-bg border border-sb-border flex items-center justify-center relative group">
-                           {match.url ? (
-                             <img 
-                               src={getThumbnailUrl(match.url, match.type)} 
-                               alt={match.title} 
-                               className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                               onError={(e) => {
-                                 e.target.style.display = 'none';
-                                 e.target.nextSibling.style.display = 'flex';
-                               }}
-                             />
-                           ) : null}
-                           {/* Fallback icon if image fails to load */}
-                           <div className="absolute inset-0 flex items-center justify-center text-sb-text-muted" style={{ display: match.url ? 'none' : 'flex' }}>
-                             <ImageIcon className="w-6 h-6 opacity-50" />
-                           </div>
-                        </div>
+                    {claim.matches.map((match, idx) => {
+                      const isReported = reportedMatches.has(idx);
+                      
+                      return (
+                        <div key={idx} className="flex items-center gap-4 p-4 bg-black/30 rounded-xl border border-white/5 hover:border-sb-purple/30 transition-colors">
+                          
+                          {/* Thumbnail */}
+                          <div className="w-16 h-16 shrink-0 rounded-lg overflow-hidden bg-sb-bg border border-sb-border flex items-center justify-center relative group">
+                             {match.url ? (
+                               <img 
+                                 src={getThumbnailUrl(match.url, match.type)} 
+                                 alt={match.title} 
+                                 className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                                 onError={(e) => {
+                                   e.target.style.display = 'none';
+                                   e.target.nextSibling.style.display = 'flex';
+                                 }}
+                               />
+                             ) : null}
+                             <div className="absolute inset-0 flex items-center justify-center text-sb-text-muted" style={{ display: match.url ? 'none' : 'flex' }}>
+                               <ImageIcon className="w-6 h-6 opacity-50" />
+                             </div>
+                          </div>
 
-                        {/* Details */}
-                        <div className="flex-1 pr-4 min-w-0">
-                          <div className="font-bold text-base mb-1 truncate text-white">{match.title}</div>
-                          <div className="text-xs text-sb-text-muted truncate max-w-sm">
-                            Source: <a href={match.url} target="_blank" rel="noreferrer" className="text-sb-primary hover:underline">{match.url}</a>
+                          {/* Details - URL HIDDEN, AUTHOR ADDED */}
+                          <div className="flex-1 pr-4 min-w-0">
+                            <div className="font-bold text-base mb-1 truncate text-white">{match.title}</div>
+                            <div className="text-xs text-sb-text-muted truncate max-w-sm">
+                              Original Author: <span className="text-sb-primary font-semibold">{match.owner_id || 'Unknown User'}</span>
+                            </div>
+                          </div>
+
+                          {/* Match Score & Report Button */}
+                          <div className="flex flex-col items-end border-l border-white/10 pl-6 shrink-0 min-w-[100px]">
+                            <div className="text-2xl text-sb-purple font-black">{match.similarity}%</div>
+                            <div className="text-[10px] uppercase tracking-widest text-sb-text-muted mt-1 mb-3">Match Score</div>
+                            
+                            <button
+                               onClick={() => handleReportMatch(match, idx)}
+                               disabled={isReported}
+                               className={cn(
+                                 "flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-wider transition-all w-full",
+                                 isReported 
+                                   ? "bg-green-500/10 text-green-500 border border-green-500/20 cursor-not-allowed"
+                                   : "bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/20"
+                               )}
+                            >
+                              {isReported ? (
+                                <>
+                                  <CheckCircle2 className="w-3 h-3" /> Reported
+                                </>
+                              ) : (
+                                <>
+                                  <ShieldAlert className="w-3 h-3" /> Report
+                                </>
+                              )}
+                            </button>
                           </div>
                         </div>
-
-                        {/* Match Score */}
-                        <div className="text-right border-l border-white/10 pl-6 shrink-0">
-                          <div className="text-2xl text-sb-purple font-black">{match.similarity}%</div>
-                          <div className="text-[10px] uppercase tracking-widest text-sb-text-muted mt-1">Match Score</div>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="text-center py-10 bg-black/20 rounded-xl border border-white/5">
@@ -244,7 +287,7 @@ export default function ClaimCopyright() {
         <div className="w-full lg:w-[450px] shrink-0 bg-sb-surface border border-sb-border rounded-2xl p-8 h-fit">
           <div className="flex items-center justify-between mb-8">
              <div className="text-[10px] font-bold text-sb-primary tracking-widest uppercase">
-              SCANNING PROGRESS
+             SCANNING PROGRESS
             </div>
             {isScanning && <Activity className="w-4 h-4 text-sb-primary animate-pulse" />}
           </div>
