@@ -1,4 +1,4 @@
-import { Play, FileText, Download, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { Play, FileText, Download, Image as ImageIcon, Trash2, Share2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 export default function AssetCard({ 
@@ -10,7 +10,8 @@ export default function AssetCard({
   type = 'video', // 'video', 'image', 'document', 'package'
   className,
   onDelete,
-  onClick
+  onClick,
+  onShare
 }) {
   const getBadgeColor = () => {
     switch(type) {
@@ -49,10 +50,20 @@ export default function AssetCard({
         </button>
       )}
 
+      {/* Top Right Share Button */}
+      {onShare && (
+        <button 
+          onClick={(e) => { e.stopPropagation(); onShare(); }}
+          className="absolute top-4 right-4 p-2 rounded-full bg-black/60 hover:bg-sb-primary/80 text-white transition-colors z-10 opacity-0 group-hover:opacity-100"
+        >
+          <Share2 className="w-4 h-4" />
+        </button>
+      )}
+
       {/* Top Right Badge */}
       {badgeText && (
         <div className={cn(
-          "absolute top-4 right-4 px-2 py-1 rounded-md text-[10px] font-bold tracking-wider flex items-center gap-1 border backdrop-blur-md bg-opacity-80 z-10",
+          "absolute top-4 left-4 px-2 py-1 rounded-md text-[10px] font-bold tracking-wider flex items-center gap-1 border backdrop-blur-md bg-opacity-80 z-10",
           getBadgeColor()
         )}>
           {BadgeIcon && <BadgeIcon className="w-3 h-3" />}

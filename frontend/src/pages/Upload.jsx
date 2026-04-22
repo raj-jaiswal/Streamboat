@@ -54,7 +54,7 @@ export default function Upload() {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
-      const { url, size } = uploadRes.data;
+      const { url, public_id, size } = uploadRes.data;
 
       toast.loading('Saving metadata...', { id: loadingToast });
 

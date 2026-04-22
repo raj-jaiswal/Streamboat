@@ -1,4 +1,5 @@
 const Asset = require('../models/Asset');
+const { cloudinary } = require('../middlewares/uploadMiddleware');
 
 // @desc    Get user's media
 // @route   GET /api/user/media
@@ -63,7 +64,22 @@ const deleteMedia = async (req, res) => {
       return res.status(401).json({ message: 'Not authorized' });
     }
 
-    // In a real app we'd also delete from Cloudinary here
+    // Delete from Cloudinary
+    try {
+      // Extract public_id from fileUrl
+      const urlParts = asset.fileUrl.split('/upload/');
+      if (urlParts.length === 2) {
+        const publicIdWithExt = urlParts[1];
+        const publicId = publicIdWithExt.replace(/\.[^/.]+$/, ''); // Remove file extension
+
+        await cloudinary.uploader.destroy(publicId);
+      }
+    } catch (cloudinaryError) {
+      console.error('Error deleting from Cloudinary:', cloudinaryError);
+      // Continue with database deletion even if Cloudinary deletion fails
+    }
+
+    // Delete from database
     await Asset.deleteOne({ _id: req.params.id });
 
     res.json({ message: 'Asset removed' });

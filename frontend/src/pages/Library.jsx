@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { FileVideo, FileImage, FileText, Package } from 'lucide-react';
 import AssetCard from '../components/AssetCard';
@@ -9,6 +10,7 @@ import toast from 'react-hot-toast';
 const TABS = ['All Assets', 'Video', 'Image', 'Document'];
 
 export default function Library() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('All Assets');
   const [assets, setAssets] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -31,6 +33,41 @@ export default function Library() {
     };
     fetchAssets();
   }, [activeTab]);
+
+  const handleAssetClick = (asset) => {
+    navigate(`/media/${asset._id}`);
+  };
+
+  const handleShare = async (asset) => {
+    const url = `${window.location.origin}/media/${asset._id}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Link copied to clipboard!');
+    } catch (error) {
+      toast.error('Failed to copy link');
+    }
+  };
+
+  const getThumbnailUrl = (asset) => {
+    if (asset.thumbnailUrl) return asset.thumbnailUrl;
+    
+    // Generate thumbnail URL from fileUrl
+    const urlParts = asset.fileUrl.split('/upload/');
+    if (urlParts.length === 2) {
+      const publicIdWithExt = urlParts[1];
+      const basePublicId = publicIdWithExt.replace(/\.[^/.]+$/, '');
+      
+      if (asset.type === 'document') {
+        return asset.fileUrl.replace('/upload/', '/upload/w_300,h_300,c_fill,pg_1,f_jpg/').replace(/\.[^/.]+$/, '.jpg');
+      } else if (asset.type === 'video') {
+        return asset.fileUrl.replace('/upload/', '/upload/w_300,h_300,c_fill,f_jpg/').replace(/\.[^/.]+$/, '.jpg');
+      } else if (asset.type === 'image') {
+        return asset.fileUrl.replace('/upload/', '/upload/w_300,h_300,c_fill/');
+      }
+    }
+    
+    return asset.fileUrl;
+  };
 
   const getIconForType = (type) => {
     switch (type?.toLowerCase()) {
@@ -100,9 +137,11 @@ export default function Library() {
                 <AssetCard 
                   title={asset.title}
                   subtitle={asset.owner_id ? `${asset.owner_id.firstName} ${asset.owner_id.lastName}` : 'Unknown'}
-                  imageUrl={asset.thumbnailUrl || asset.fileUrl}
+                  imageUrl={getThumbnailUrl(asset)}
                   badgeText={asset.type.toUpperCase()}
                   badgeIcon={getIconForType(asset.type)}
+                  onClick={() => handleAssetClick(asset)}
+                  onShare={() => handleShare(asset)}
                   className="w-full h-full" 
                 />
               </motion.div>

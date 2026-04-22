@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Radio, Scissors, FileVideo, Clapperboard, FileImage, FileText, Package, X } from 'lucide-react';
 import AssetCard from '../components/AssetCard';
@@ -9,6 +10,7 @@ import toast from 'react-hot-toast';
 const TABS = ['All Media', 'Video', 'Image', 'Document', 'Upload'];
 
 export default function MyMedia() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('All Media');
   const [assets, setAssets] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -47,6 +49,27 @@ export default function MyMedia() {
     }
   };
 
+  const getThumbnailUrl = (asset) => {
+    if (asset.thumbnailUrl) return asset.thumbnailUrl;
+    
+    // Generate thumbnail URL from fileUrl
+    const urlParts = asset.fileUrl.split('/upload/');
+    if (urlParts.length === 2) {
+      const publicIdWithExt = urlParts[1];
+      const basePublicId = publicIdWithExt.replace(/\.[^/.]+$/, '');
+      
+      if (asset.type === 'document') {
+        return asset.fileUrl.replace('/upload/', '/upload/w_300,h_300,c_fill,pg_1,f_jpg/').replace(/\.[^/.]+$/, '.jpg');
+      } else if (asset.type === 'video') {
+        return asset.fileUrl.replace('/upload/', '/upload/w_300,h_300,c_fill,f_jpg/').replace(/\.[^/.]+$/, '.jpg');
+      } else if (asset.type === 'image') {
+        return asset.fileUrl.replace('/upload/', '/upload/w_300,h_300,c_fill/');
+      }
+    }
+    
+    return asset.fileUrl;
+  };
+
   const getIconForType = (type) => {
     switch (type?.toLowerCase()) {
       case 'video': return FileVideo;
@@ -58,15 +81,16 @@ export default function MyMedia() {
   };
 
   const handleAssetClick = (asset) => {
-    const type = asset.type?.toLowerCase();
-    if (type === 'document' || type === 'package') {
-      let finalUrl = asset.fileUrl;
-      if (type === 'document' && finalUrl && !finalUrl.endsWith('.pdf')) {
-        finalUrl += '.pdf';
-      }
-      window.open(finalUrl, '_blank');
-    } else {
-      setSelectedAsset(asset);
+    navigate(`/media/${asset._id}`);
+  };
+
+  const handleShare = async (asset) => {
+    const url = `${window.location.origin}/media/${asset._id}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Link copied to clipboard!');
+    } catch (error) {
+      toast.error('Failed to copy link');
     }
   };
 
@@ -119,10 +143,11 @@ export default function MyMedia() {
               <AssetCard 
                 title={asset.title}
                 subtitle={new Date(asset.createdAt).toLocaleDateString()}
-                imageUrl={asset.thumbnailUrl || asset.fileUrl}
+                imageUrl={getThumbnailUrl(asset)}
                 badgeText={asset.type.toUpperCase()}
                 badgeIcon={getIconForType(asset.type)}
                 onClick={() => handleAssetClick(asset)}
+                onShare={() => handleShare(asset)}
                 onDelete={() => handleDelete(asset._id)}
               />
             </motion.div>

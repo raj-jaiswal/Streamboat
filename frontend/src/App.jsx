@@ -11,6 +11,7 @@ import MyMedia from './pages/MyMedia';
 import Upload from './pages/Upload';
 import ClaimCopyright from './pages/ClaimCopyright';
 import Profile from './pages/Profile';
+import MediaDisplay from './pages/MediaDisplay';
 
 const ProtectedRoute = ({ children }) => {
   const { user } = useContext(AuthContext);
@@ -42,6 +43,7 @@ function App() {
             <Route path="/upload" element={<Upload />} />
             <Route path="/claim" element={<ClaimCopyright />} />
             <Route path="/settings" element={<Profile />} />
+            <Route path="/media/:id" element={<MediaDisplay />} />
           </Route>
           
           {/* Fallback */}
