@@ -1,4 +1,5 @@
 const Claim = require('../models/Claim');
+const Report = require('../models/Report'); // <-- NEW: Import the Report model
 const { processSentinelScan } = require('../utils/sentinelAiMock');
 
 // @desc    Submit file for copyright analysis
@@ -83,9 +84,41 @@ const getClaimLogs = async (req, res) => {
   }
 };
 
+// @desc    Report a specific match
+// @route   POST /api/copyright/claim/:claimId/report
+// @access  Private
+const reportMatch = async (req, res) => {
+  try {
+    const { title, similarity, owner_id } = req.body;
+    const claimId = req.params.claimId;
+
+    // Verify the claim exists before reporting
+    const claim = await Claim.findById(claimId);
+    if (!claim) {
+      return res.status(404).json({ message: 'Claim not found' });
+    }
+
+    // <-- NEW: Insert the report into the new Report table
+    const newReport = await Report.create({
+      claim_id: claimId,
+      title,
+      similarity,
+      owner_id
+    });
+
+    res.status(201).json({ 
+      message: 'Match successfully reported to the reports table', 
+      report: newReport 
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   submitClaim,
   initiateScan,
   getClaimStatus,
-  getClaimLogs
+  getClaimLogs,
+  reportMatch
 };
